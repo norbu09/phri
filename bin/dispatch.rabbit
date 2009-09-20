@@ -1,0 +1,104 @@
+#!/usr/bin/perl -Ilib
+
+use strict;
+use warnings;
+use Net::AMQP::Simple;
+use Data::Dumper;
+use DB::CouchDB;
+use JSON;
+
+my $spec = {
+    RemoteAddress => '127.0.0.1',
+    RemotePort    => { default => 5672 },
+    Username      => { default => 'guest' },
+    Password      => { default => 'guest' },
+    VirtualHost   => { default => '/' },
+
+    Logger => 0,
+    Debug  => { default => {} },
+
+    Alias     => { default => 'amqp_client' },
+    AliasTCP  => { default => 'tcp_client' },
+    Callbacks => { default => {} },
+
+    channels   => { default => {} },
+    is_started => { default => 0 },
+};
+
+Net::AMQP::Simple::connect($spec);
+
+Net::AMQP::Simple::queue("dispatch");
+
+my $db = DB::CouchDB->new(
+    host => 'localhost',
+    db   => 'phri',
+);
+
+while (1) {
+    process( Net::AMQP::Simple::poll() );
+}
+
+sub process {
+    foreach my $_req (@_) {
+        my $req = from_json( $_req, { allow_nonref => 1 } );
+        my $view =
+          $db->view( 'user/routing',
+            { key =>
+            '["'.$req->{meta}->{user}.'","'.$req->{meta}->{service}.'"]' } );
+        if ( !$view->{data}->[0] ) {
+            notify("Could not find a definition!");
+            return;
+        }
+        $req->{meta}->{identity} = $view->{data}->[0]->{value}->{identity};
+        #Net::AMQP::Simple::pub("input", $req);
+        print STDERR Dumper($req);
+    }
+}
+
+sub notify {
+    my $message = shift;
+    #Net::AMQP::Simple::pub( "log", $message );
+    print STDERR $message;
+}
+
+=head1 NAME
+
+bin::dispatch - bin::dispatch
+
+=head1 VERSION
+
+Version 0.01
+
+=head1 SYNOPSIS
+
+This is a RabbitMQ end point handling ...
+
+=head1 AUTHOR
+
+Lenz Gschwendtner, C<< <lenz@springtimesoft.com> >>
+
+=head1 BUGS
+
+Please report any bugs or feature requests to C<< <lenz@springtimesoft.com> >>
+
+=head1 SUPPORT
+
+You can find documentation for this module with the perldoc command.
+
+    perldoc bin::dispatch
+
+=back
+
+
+=head1 ACKNOWLEDGEMENTS
+
+
+=head1 COPYRIGHT & LICENSE
+
+Copyright 2009 Lenz Gschwendtner, springtimesoft LTD, all rights reserved.
+
+This program is free software; you can redistribute it and/or modify it
+under the same terms as Perl itself.
+
+=cut
+

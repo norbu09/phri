@@ -1,0 +1,108 @@
+#!/usr/bin/perl -Ilib
+
+use strict;
+use warnings;
+use Net::AMQP::Simple;
+use Data::Dumper;
+use Mail::POP3Client;
+use Config::Any;
+use JSON;
+
+my $debug = 1;
+my $spec = {
+    RemoteAddress => '127.0.0.1',
+    RemotePort    => { default => 5672 },
+    Username      => { default => 'guest' },
+    Password      => { default => 'guest' },
+    VirtualHost   => { default => '/' },
+
+    Logger => 0,
+    Debug  => { default => {} },
+
+    Alias     => { default => 'amqp_client' },
+    AliasTCP  => { default => 'tcp_client' },
+    Callbacks => { default => {} },
+
+    channels   => { default => {} },
+    is_started => { default => 0 },
+};
+
+my $mailpass = 'vebrErtAs0';
+my $mailuser = 'phri.test1@gmail.com';
+
+Net::AMQP::Simple::connect($spec);
+
+#Net::AMQP::Simple::queue("log");
+
+my $pop = new Mail::POP3Client(
+    USER     => $mailuser,
+    PASSWORD => $mailpass,
+    HOST     => 'pop.gmail.com',
+    USESSL   => 'true',
+);
+
+print "Connecting to pop.gmail.com ...\n" if $debug;
+
+my $i;
+my @mails;
+for ( $i = 1 ; $i <= $pop->Count() ; $i++ ) {
+    print "Fetching mail ...\n" if $debug;
+    my $msg;
+    foreach ( $pop->Head($i) ) {
+        my ($key, $value) = split(/:\s+/, $_, 2);
+        $msg->{data}->{lc($key)} = $value;
+    }
+    $msg->{data}->{body} = $pop->Body($i);
+    $msg->{meta}->{type} = 'mail';
+    $msg->{meta}->{service} = 'gmail';
+    my $user = $msg->{data}->{to};
+    $user =~ s{^.*<([^>])>.*$}{$1};
+    $msg->{meta}->{user} = $user;
+
+    Net::AMQP::Simple::pub("dispatch", to_json($msg));
+}
+
+$pop->Close();
+
+
+=head1 NAME
+
+bin::pop3.plugin - bin::pop3.plugin
+
+=head1 VERSION
+
+Version 0.01
+
+=head1 SYNOPSIS
+
+This is a RabbitMQ end point handling ...
+
+=head1 AUTHOR
+
+Lenz Gschwendtner, C<< <lenz@springtimesoft.com> >>
+
+=head1 BUGS
+
+Please report any bugs or feature requests to C<< <lenz@springtimesoft.com> >>
+
+=head1 SUPPORT
+
+You can find documentation for this module with the perldoc command.
+
+    perldoc bin::pop3.plugin
+
+=back
+
+
+=head1 ACKNOWLEDGEMENTS
+
+
+=head1 COPYRIGHT & LICENSE
+
+Copyright 2009 Lenz Gschwendtner, springtimesoft LTD, all rights reserved.
+
+This program is free software; you can redistribute it and/or modify it
+under the same terms as Perl itself.
+
+=cut
+
